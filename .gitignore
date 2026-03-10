@@ -1,0 +1,54 @@
+# Qt Creator / qmake user settings
+*.pro.user
+*.pro.user.*
+*.pri.user
+
+# Build directories
+build/
+
+# Binary output
+bin/
+*.exe
+*.out
+*.app
+
+# Qt generated files
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+
+# Object and dependency files
+*.o
+*.obj
+*.lo
+*.la
+*.al
+*.lai
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+*.d
+
+# Qt Linguist
+*.qm
+
+# Database and runtime data
+*.db
+*.db-journal
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+
+# IDE / OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
