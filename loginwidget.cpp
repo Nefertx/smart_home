@@ -64,13 +64,13 @@ void LoginWidget::setupUI() {
     box->setStyleSheet(
         "QGroupBox{"
         "font-size:18px;font-weight:700;padding:16px;"
-        "margin-top:12px;"
-        "padding-top:22px;"
-        "border:1px solid rgba(255,255,255,75);"
+        "margin-top:1px;"
+        "padding-top:5px;"
+        "border:1px solid rgba(255,255,255,255);"
         "border-radius:14px;"
         "background:rgba(255,255,255,215);"
         "color:#16313f;}"
-        "QGroupBox::title{subcontrol-origin: margin;subcontrol-position: top left;left:16px;padding:0 6px;}");
+        "QGroupBox::title{subcontrol-origin: margin;subcontrol-position: top left;left:16px;padding:6 6px;}");
 
     QFormLayout* form = new QFormLayout(box);
     form->setSpacing(14);
