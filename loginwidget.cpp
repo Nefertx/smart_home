@@ -8,53 +8,107 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPaintEvent>
+#include <QFileInfo>
 
 LoginWidget::LoginWidget(QWidget* parent) : QWidget(parent) {
     setupUI();
+    m_bgPixmap.load("assets/login_bg.jpg");
+}
+
+void LoginWidget::paintEvent(QPaintEvent* event) {
+    Q_UNUSED(event);
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    if (!m_bgPixmap.isNull()) {
+        p.drawPixmap(rect(), m_bgPixmap);
+        p.fillRect(rect(), QColor(0, 0, 0, 90));
+        return;
+    }
+
+    QLinearGradient g(0, 0, width(), height());
+    g.setColorAt(0.0, QColor("#0f2027"));
+    g.setColorAt(0.5, QColor("#203a43"));
+    g.setColorAt(1.0, QColor("#2c5364"));
+    p.fillRect(rect(), g);
+
+    p.setBrush(QColor(255, 255, 255, 35));
+    p.setPen(Qt::NoPen);
+    p.drawEllipse(QPoint(width() * 0.20, height() * 0.25), 120, 120);
+    p.drawEllipse(QPoint(width() * 0.80, height() * 0.75), 160, 160);
+    p.drawEllipse(QPoint(width() * 0.75, height() * 0.20), 70, 70);
 }
 
 void LoginWidget::setupUI() {
-    setStyleSheet("background:#ecf0f1;");
+    setAttribute(Qt::WA_StyledBackground, true);
 
     QVBoxLayout* outer = new QVBoxLayout(this);
+    outer->setContentsMargins(24,24,24,24);
+    outer->setSpacing(14);
     outer->setAlignment(Qt::AlignCenter);
 
-    QGroupBox* box = new QGroupBox("智能家居监控平台", this);
-    box->setFixedWidth(380);
-    box->setStyleSheet("QGroupBox{font-size:16px;font-weight:bold;padding:20px;"
-                       "border:2px solid #2c3e50;border-radius:8px;background:white;}");
+    QLabel* heroTitle = new QLabel("Smart Home", this);
+    heroTitle->setAlignment(Qt::AlignCenter);
+    heroTitle->setStyleSheet("color:white;font-size:38px;font-weight:700;letter-spacing:2px;");
+    outer->addWidget(heroTitle);
+
+    QLabel* heroSub = new QLabel("智能家居监控平台", this);
+    heroSub->setAlignment(Qt::AlignCenter);
+    heroSub->setStyleSheet("color:rgba(255,255,255,210);font-size:15px;");
+    outer->addWidget(heroSub);
+
+    QGroupBox* box = new QGroupBox("账号登录", this);
+    box->setFixedWidth(420);
+    box->setStyleSheet(
+        "QGroupBox{"
+        "font-size:18px;font-weight:700;padding:16px;"
+        "margin-top:12px;"
+        "padding-top:22px;"
+        "border:1px solid rgba(255,255,255,75);"
+        "border-radius:14px;"
+        "background:rgba(255,255,255,215);"
+        "color:#16313f;}"
+        "QGroupBox::title{subcontrol-origin: margin;subcontrol-position: top left;left:16px;padding:0 6px;}");
 
     QFormLayout* form = new QFormLayout(box);
     form->setSpacing(14);
-    form->setContentsMargins(20,30,20,20);
+    form->setContentsMargins(24,30,24,22);
+
+    QString editStyle =
+        "QLineEdit{border:1px solid #c7d5dd;border-radius:8px;padding:6px 10px;background:white;}"
+        "QLineEdit:focus{border:1px solid #2a6f97;}";
 
     m_userEdit = new QLineEdit(box);
     m_userEdit->setPlaceholderText("请输入用户名");
     m_userEdit->setText("admin");
-    m_userEdit->setFixedHeight(34);
-    m_userEdit->setStyleSheet("border:1px solid #bdc3c7;border-radius:4px;padding:4px 8px;");
+    m_userEdit->setFixedHeight(38);
+    m_userEdit->setStyleSheet(editStyle);
 
     m_passEdit = new QLineEdit(box);
     m_passEdit->setPlaceholderText("请输入密码");
     m_passEdit->setText("admin123");
     m_passEdit->setEchoMode(QLineEdit::Password);
-    m_passEdit->setFixedHeight(34);
-    m_passEdit->setStyleSheet("border:1px solid #bdc3c7;border-radius:4px;padding:4px 8px;");
+    m_passEdit->setFixedHeight(38);
+    m_passEdit->setStyleSheet(editStyle);
 
     form->addRow("用户名:", m_userEdit);
     form->addRow("密  码:", m_passEdit);
 
     m_statusLbl = new QLabel("", box);
-    m_statusLbl->setStyleSheet("color:red; font-size:12px;");
+    m_statusLbl->setStyleSheet("color:#c0392b; font-size:12px;");
     m_statusLbl->setAlignment(Qt::AlignCenter);
     form->addRow(m_statusLbl);
 
-    QString btnStyle = "QPushButton{background:#2c3e50;color:white;border-radius:4px;padding:7px;font-size:14px;}"
-                       "QPushButton:hover{background:#34495e;}";
+    QString btnStyle =
+        "QPushButton{background:#1b4965;color:white;border:none;border-radius:8px;padding:8px;font-size:14px;font-weight:600;}"
+        "QPushButton:hover{background:#245f84;}"
+        "QPushButton:pressed{background:#15384d;}";
 
     QPushButton* loginBtn = new QPushButton("登  录", box);
     loginBtn->setStyleSheet(btnStyle);
-    loginBtn->setFixedHeight(38);
+    loginBtn->setFixedHeight(40);
     connect(loginBtn, &QPushButton::clicked, this, &LoginWidget::onLogin);
     connect(m_passEdit, &QLineEdit::returnPressed, this, &LoginWidget::onLogin);
     form->addRow(loginBtn);
@@ -65,7 +119,7 @@ void LoginWidget::setupUI() {
     regBtn->setFlat(true);
     resetBtn->setFlat(true);
     QString linkStyle = "QPushButton{color:#2980b9;font-size:12px;}"
-                        "QPushButton:hover{color:#1a5276;}";
+                        "QPushButton:hover{color:#154360;}";
     regBtn->setStyleSheet(linkStyle);
     resetBtn->setStyleSheet(linkStyle);
     connect(regBtn,   &QPushButton::clicked, this, &LoginWidget::onRegister);
@@ -79,7 +133,7 @@ void LoginWidget::setupUI() {
 
     QLabel* hint = new QLabel("默认账号 admin / 密码 admin123", this);
     hint->setAlignment(Qt::AlignCenter);
-    hint->setStyleSheet("color:#95a5a6;font-size:11px;margin-top:8px;");
+    hint->setStyleSheet("color:rgba(255,255,255,190);font-size:11px;margin-top:8px;");
     outer->addWidget(hint);
 }
 
