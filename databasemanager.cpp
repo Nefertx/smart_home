@@ -104,14 +104,20 @@ void DatabaseManager::createTables() {
     q.exec("SELECT COUNT(*) FROM devices");
     if (q.next() && q.value(0).toInt() == 0) {
         QStringList initDevices = {
-            "INSERT INTO devices(name,type,grp,ip,port,status) VALUES('客厅灯','灯光','客厅','127.0.0.1',8081,'online')",
+            "INSERT INTO devices(name,type,grp,ip,port,status,params) VALUES('客厅灯','灯光','客厅','127.0.0.1',8081,'online','power=on;brightness=80;color=暖白')",
             "INSERT INTO devices(name,type,grp,ip,port,status) VALUES('卧室灯','灯光','卧室','127.0.0.1',8082,'offline')",
-            "INSERT INTO devices(name,type,grp,ip,port,status) VALUES('客厅空调','空调','客厅','127.0.0.1',8083,'online')",
-            "INSERT INTO devices(name,type,grp,ip,port,status) VALUES('客厅窗帘','窗帘','客厅','127.0.0.1',8084,'online')",
-            "INSERT INTO devices(name,type,grp,ip,port,status) VALUES('门口摄像头','摄像头','门口','127.0.0.1',8085,'online')",
-            "INSERT INTO devices(name,type,grp,ip,port,status) VALUES('温湿度传感器','传感器','客厅','127.0.0.1',8086,'online')"
+            "INSERT INTO devices(name,type,grp,ip,port,status,params) VALUES('客厅空调','空调','客厅','127.0.0.1',8083,'online','power=on;mode=制冷;temp=24;fan=中')",
+            "INSERT INTO devices(name,type,grp,ip,port,status,params) VALUES('客厅窗帘','窗帘','客厅','127.0.0.1',8084,'online','power=on;open=60')",
+            "INSERT INTO devices(name,type,grp,ip,port,status,params) VALUES('门口摄像头','摄像头','门口','127.0.0.1',8085,'online','power=on')"
         };
         for (const auto& sql : initDevices) q.exec(sql);
+
+        QStringList envSeed = {
+            "INSERT INTO env_data(temperature,humidity,air_quality) VALUES(25.2,56.0,31.2)",
+            "INSERT INTO env_data(temperature,humidity,air_quality) VALUES(24.8,57.3,30.6)",
+            "INSERT INTO env_data(temperature,humidity,air_quality) VALUES(25.0,55.4,29.9)"
+        };
+        for (const auto& sql : envSeed) q.exec(sql);
 
         // 初始化演示场景
         q.exec("INSERT INTO scenes(name,description) VALUES('回家模式','开灯、开空调、拉开窗帘')");

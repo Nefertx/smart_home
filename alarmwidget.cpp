@@ -144,10 +144,10 @@ void AlarmWidget::checkThresholds() {
         double temp = latest["temperature"].toDouble();
         double humid = latest["humidity"].toDouble();
         if (temp > m_tempThresh->value()) {
-            addAlarm("温度报警", QString("当前温度 %1℃ 超过阈值 %2℃").arg(temp).arg(m_tempThresh->value()), "温湿度传感器");
+            addAlarm("温度报警", QString("当前温度 %1℃ 超过阈值 %2℃").arg(temp).arg(m_tempThresh->value()), "客厅空调");
         }
         if (humid > m_humidThresh->value()) {
-            addAlarm("湿度报警", QString("当前湿度 %1% 超过阈值 %2%").arg(humid).arg(m_humidThresh->value()), "温湿度传感器");
+            addAlarm("湿度报警", QString("当前湿度 %1% 超过阈值 %2%").arg(humid).arg(m_humidThresh->value()), "客厅空调");
         }
     }
     // 检查设备离线
