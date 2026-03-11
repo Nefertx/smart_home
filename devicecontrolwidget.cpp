@@ -6,6 +6,7 @@
 #include <QDialogButtonBox>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QApplication>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -15,14 +16,35 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QStyle>
 #include <QStringList>
 #include <QSpinBox>
 #include <QTcpSocket>
 #include <QVBoxLayout>
 
 #include <algorithm>
+
+namespace {
+QIcon iconForDeviceType(const QString& type, QWidget* host) {
+    QStyle* s = host ? host->style() : QApplication::style();
+    if (type == "空调") {
+        return s->standardIcon(QStyle::SP_BrowserReload);
+    }
+    if (type == "灯光") {
+        return s->standardIcon(QStyle::SP_DialogYesButton);
+    }
+    if (type == "窗帘") {
+        return s->standardIcon(QStyle::SP_ArrowLeft);
+    }
+    if (type == "摄像头") {
+        return s->standardIcon(QStyle::SP_ComputerIcon);
+    }
+    return s->standardIcon(QStyle::SP_FileIcon);
+}
+}
 
 DeviceControlWidget::DeviceControlWidget(const QString& username, QWidget* parent)
     : QWidget(parent), m_username(username) {
@@ -88,42 +110,47 @@ void DeviceControlWidget::setupUI() {
     m_cardList->setWrapping(true);
     m_cardList->setResizeMode(QListView::Adjust);
     m_cardList->setMovement(QListView::Snap);
-    m_cardList->setDragDropMode(QAbstractItemView::InternalMove);
+    m_cardList->setDragDropMode(QAbstractItemView::NoDragDrop);
+    m_cardList->setDragDropOverwriteMode(false);
     m_cardList->setDefaultDropAction(Qt::MoveAction);
+    m_cardList->setDragEnabled(false);
+    m_cardList->setAcceptDrops(false);
+    m_cardList->setDropIndicatorShown(false);
     m_cardList->setSelectionMode(QAbstractItemView::SingleSelection);
     m_cardList->setSpacing(12);
     m_cardList->setFrameShape(QFrame::NoFrame);
     m_cardList->setGridSize(QSize(280, 138));
+    m_cardList->setIconSize(QSize(36, 36));
     m_cardList->setContextMenuPolicy(Qt::CustomContextMenu);
     m_cardList->setStyleSheet(
-        "QListWidget::item{border-radius:10px;padding:10px;text-align:left;}"
-        "QListWidget::item:selected{border:2px solid #1abc9c;}"
+        "QListWidget{background:#e6edf5;border:none;}"
+        "QListWidget::item{background:#ffffff;border:1px solid #93a6bb;border-radius:10px;padding:10px;text-align:left;color:#1f2937;}"
+        "QListWidget::item:hover{border:1px solid #3b82f6;background:#f8fbff;}"
+        "QListWidget::item:selected{border:2px solid #16a34a;color:#1f2937;background:#ffffff;}"
+        "QListWidget::item:selected:active{background:#ffffff;color:#2c3e50;}"
     );
+    m_cardList->viewport()->installEventFilter(this);
 
     connect(m_cardList, &QListWidget::itemClicked, this, &DeviceControlWidget::onCardItemClicked);
     connect(m_cardList, &QWidget::customContextMenuRequested, this, &DeviceControlWidget::onCardContextMenu);
-    connect(m_cardList->model(), &QAbstractItemModel::rowsMoved, this, [this] {
-        onCardOrderChanged();
-    });
-
     outerVl->addWidget(m_cardList);
 }
 
 void DeviceControlWidget::addDeviceCard(const QMap<QString, QVariant>& device) {
     const int id = device.value("id").toInt();
     const bool isOnline = device.value("status").toString() == "online";
-    const QString title = QString("%1\n[%2] %3")
-                              .arg(device.value("name").toString(),
-                                   device.value("type").toString(),
-                                   device.value("grp").toString());
-    const QString param = device.value("params").toString().isEmpty() ? "参数: -"
-                                                                        : "参数: " + device.value("params").toString();
-    const QString status = isOnline ? "状态: 在线" : "状态: 离线（点击尝试配对）";
+    const QString name = device.value("name").toString();
+    const QString type = device.value("type").toString();
+    const QString group = device.value("grp").toString();
+    const QString status = isOnline ? "在线" : "离线";
+    const QString tooltip = QString("设备: %1\n类型: %2\n分组: %3\n状态: %4")
+                                .arg(name, type, group, status);
 
-    QListWidgetItem* item = new QListWidgetItem(title + "\n" + status + "\n" + param, m_cardList);
+    QListWidgetItem* item = new QListWidgetItem(iconForDeviceType(type, m_cardList), name, m_cardList);
+    item->setToolTip(tooltip);
     item->setData(Qt::UserRole, id);
     item->setSizeHint(QSize(280, 138));
-    item->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    item->setTextAlignment(Qt::AlignHCenter | Qt::AlignBottom);
     item->setFlags(item->flags() | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled | Qt::ItemIsSelectable);
     if (id == m_selectedDeviceId) {
         item->setSelected(true);
@@ -131,10 +158,10 @@ void DeviceControlWidget::addDeviceCard(const QMap<QString, QVariant>& device) {
 
     if (isOnline) {
         item->setBackground(QBrush(QColor("#ffffff")));
-        item->setForeground(QBrush(QColor("#2c3e50")));
+        item->setForeground(QBrush(QColor("#1f2937")));
     } else {
-        item->setBackground(QBrush(QColor("#e5e7eb")));
-        item->setForeground(QBrush(QColor("#6b7280")));
+        item->setBackground(QBrush(QColor("#d7dde5")));
+        item->setForeground(QBrush(QColor("#4b5563")));
     }
 }
 
@@ -152,7 +179,10 @@ void DeviceControlWidget::loadDevices() {
 
     const QString filter = (m_filterCombo->currentIndex() == 0) ? QString() : m_filterCombo->currentText();
     const bool allVisible = filter.isEmpty();
-    m_cardList->setDragDropMode(allVisible ? QAbstractItemView::InternalMove : QAbstractItemView::NoDragDrop);
+    m_cardList->setDragDropMode(QAbstractItemView::NoDragDrop);
+    m_cardList->setDragEnabled(false);
+    m_cardList->setAcceptDrops(false);
+    m_cardList->setProperty("reorderEnabled", allVisible);
 
     for (const auto& d : m_devices) {
         if (!filter.isEmpty() && d.value("type").toString() != filter) {
@@ -376,6 +406,10 @@ void DeviceControlWidget::onCardClicked(int deviceId) {
 }
 
 void DeviceControlWidget::onCardItemClicked(QListWidgetItem* item) {
+    if (m_suppressCardClick) {
+        m_suppressCardClick = false;
+        return;
+    }
     if (!item) {
         return;
     }
@@ -408,26 +442,85 @@ void DeviceControlWidget::onCardContextMenu(const QPoint& pos) {
     }
 }
 
-void DeviceControlWidget::onCardOrderChanged() {
-    if (!m_cardList || m_filterCombo->currentIndex() != 0) {
+void DeviceControlWidget::moveOrderByIndex(int from, int to) {
+    if (from < 0 || from >= m_deviceOrder.size()) {
+        return;
+    }
+    if (to < 0) {
+        to = 0;
+    }
+    if (to >= m_deviceOrder.size()) {
+        to = m_deviceOrder.size() - 1;
+    }
+    if (from == to) {
         return;
     }
 
-    QList<int> newOrder;
-    newOrder.reserve(m_cardList->count());
-    for (int i = 0; i < m_cardList->count(); ++i) {
-        QListWidgetItem* item = m_cardList->item(i);
-        const int id = item->data(Qt::UserRole).toInt();
-        if (id > 0) {
-            newOrder.append(id);
+    const int moved = m_deviceOrder.at(from);
+    m_deviceOrder.removeAt(from);
+    m_deviceOrder.insert(to, moved);
+}
+
+bool DeviceControlWidget::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == m_cardList->viewport()) {
+        if (event->type() == QEvent::MouseButtonPress) {
+            auto* mouseEv = static_cast<QMouseEvent*>(event);
+            m_cardDragging = false;
+            m_dragRow = -1;
+            m_pressPos = mouseEv->pos();
+
+            const QModelIndex idx = m_cardList->indexAt(mouseEv->pos());
+            if (!idx.isValid()) {
+                m_cardList->clearSelection();
+                m_selectedDeviceId = -1;
+                return false;
+            }
+
+            if (mouseEv->button() == Qt::LeftButton) {
+                m_dragRow = idx.row();
+            }
+        } else if (event->type() == QEvent::MouseMove) {
+            auto* mouseEv = static_cast<QMouseEvent*>(event);
+            const bool reorderEnabled = m_cardList->property("reorderEnabled").toBool();
+            if (!reorderEnabled || !(mouseEv->buttons() & Qt::LeftButton) || m_dragRow < 0) {
+                return false;
+            }
+
+            if (!m_cardDragging && (mouseEv->pos() - m_pressPos).manhattanLength() < QApplication::startDragDistance()) {
+                return false;
+            }
+            m_cardDragging = true;
+
+            QModelIndex targetIdx = m_cardList->indexAt(mouseEv->pos());
+            if (!targetIdx.isValid()) {
+                return false;
+            }
+            const int targetRow = targetIdx.row();
+            if (targetRow < 0 || targetRow == m_dragRow) {
+                return false;
+            }
+
+            QListWidgetItem* moving = m_cardList->takeItem(m_dragRow);
+            if (!moving) {
+                return false;
+            }
+            m_cardList->insertItem(targetRow, moving);
+            m_cardList->setCurrentItem(moving);
+            m_selectedDeviceId = moving->data(Qt::UserRole).toInt();
+
+            moveOrderByIndex(m_dragRow, targetRow);
+            m_dragRow = targetRow;
+            m_suppressCardClick = true;
+            return true;
+        } else if (event->type() == QEvent::MouseButtonRelease) {
+            if (m_cardDragging) {
+                persistDeviceOrderToSetting();
+            }
+            m_cardDragging = false;
+            m_dragRow = -1;
         }
     }
-    if (newOrder.isEmpty()) {
-        return;
-    }
-
-    m_deviceOrder = newOrder;
-    persistDeviceOrderToSetting();
+    return QWidget::eventFilter(watched, event);
 }
 
 void DeviceControlWidget::onAddDevice() {

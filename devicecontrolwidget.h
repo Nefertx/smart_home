@@ -3,6 +3,7 @@
 #include <QString>
 #include <QList>
 #include <QMap>
+#include <QModelIndex>
 #include <QPoint>
 #include <QVariant>
 
@@ -14,6 +15,9 @@ class DeviceControlWidget : public QWidget {
 public:
     explicit DeviceControlWidget(const QString& username, QWidget* parent = nullptr);
 
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
 signals:
     void deviceChanged();
 
@@ -24,7 +28,6 @@ private slots:
     void onDeleteDevice();
     void onCardItemClicked(QListWidgetItem* item);
     void onCardContextMenu(const QPoint& pos);
-    void onCardOrderChanged();
 
 private:
     void setupUI();
@@ -36,6 +39,7 @@ private:
     void restoreDeviceOrderFromSetting();
     void persistDeviceOrderToSetting();
     int orderRank(int deviceId) const;
+    void moveOrderByIndex(int from, int to);
     static QMap<QString, QString> parseParams(const QString& params);
     static QString buildParams(const QMap<QString, QString>& kv);
 
@@ -44,6 +48,10 @@ private:
 
     QList<QMap<QString, QVariant>> m_devices;
     QList<int> m_deviceOrder;
+    QPoint m_pressPos;
+    int m_dragRow = -1;
+    bool m_cardDragging = false;
+    bool m_suppressCardClick = false;
 
     class QComboBox*    m_filterCombo = nullptr;
     class QListWidget*  m_cardList    = nullptr;
