@@ -51,7 +51,7 @@ void HistoryWidget::setupUI() {
 
     filterLay->addWidget(new QLabel("设备类型:"));
     m_typeFilter = new QComboBox(filterBox);
-    m_typeFilter->addItems({"全部","灯光","空调","窗帘","摄像头","传感器"});
+    m_typeFilter->addItems({"全部","灯光","空调","窗帘","摄像头"});
     filterLay->addWidget(m_typeFilter);
 
     QPushButton* queryBtn = new QPushButton("🔍 查询", filterBox);
