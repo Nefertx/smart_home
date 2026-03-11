@@ -4,6 +4,7 @@
 #include <QTabBar>
 #include <QLabel>
 #include <QString>
+#include <QVector>
 
 class LoginWidget;
 class HomeWidget;
@@ -12,12 +13,16 @@ class SceneWidget;
 class HistoryWidget;
 class AlarmWidget;
 class SettingsWidget;
+class QPushButton;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() = default;
+
+protected:
+    void resizeEvent(QResizeEvent* event) override;
 
 public slots:
     void onLoginSuccess(const QString& username);
@@ -26,12 +31,18 @@ public slots:
 private:
     void setupUI();
     void setupNavBar();
+    void applyAdaptiveUiScale();
+    void updateNavButtonStyles(double scale);
 
     QWidget*             m_mainWidget   = nullptr;
     QStackedWidget*      m_stack        = nullptr;
     QWidget*             m_navBar       = nullptr;
+    QLabel*              m_logoLabel    = nullptr;
     QLabel*              m_userLabel    = nullptr;
     QString              m_currentUser;
+    int                  m_lastFontPt   = -1;
+    int                  m_currentPage  = 0;
+    QVector<QPushButton*> m_navButtons;
 
     LoginWidget*         m_loginWidget  = nullptr;
     HomeWidget*          m_homeWidget   = nullptr;

@@ -4,6 +4,9 @@
 #include <QLabel>
 #include <QPixmap>
 
+class QPushButton;
+class QFormLayout;
+
 class LoginWidget : public QWidget {
     Q_OBJECT
 public:
@@ -11,6 +14,7 @@ public:
 
 protected:
     void paintEvent(QPaintEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 signals:
     void loginSuccess(const QString& username);
@@ -24,6 +28,13 @@ private:
     QLineEdit* m_userEdit  = nullptr;
     QLineEdit* m_passEdit  = nullptr;
     QLabel*    m_statusLbl = nullptr;
+    QLabel*    m_heroTitle = nullptr;
+    QLabel*    m_heroSub   = nullptr;
+    QLabel*    m_hintLbl   = nullptr;
+    QPushButton* m_loginBtn = nullptr;
+    class QFormLayout* m_formLayout = nullptr;
+    class QGroupBox* m_loginBox = nullptr;
     QPixmap    m_bgPixmap;
     void setupUI();
+    void applyResponsiveScale();
 };
