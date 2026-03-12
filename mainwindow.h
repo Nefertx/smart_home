@@ -4,6 +4,7 @@
 #include <QTabBar>
 #include <QLabel>
 #include <QString>
+#include <QTimer>
 #include <QVector>
 
 class LoginWidget;
@@ -33,6 +34,9 @@ private:
     void setupNavBar();
     void applyAdaptiveUiScale();
     void updateNavButtonStyles(double scale);
+    void setupEnvSampling();
+    void applyEnvSamplingInterval(int seconds);
+    void onEnvSamplingTick();
 
     QWidget*             m_mainWidget   = nullptr;
     QStackedWidget*      m_stack        = nullptr;
@@ -43,6 +47,7 @@ private:
     int                  m_lastFontPt   = -1;
     int                  m_currentPage  = 0;
     QVector<QPushButton*> m_navButtons;
+    QTimer*              m_envSampleTimer = nullptr;
 
     LoginWidget*         m_loginWidget  = nullptr;
     HomeWidget*          m_homeWidget   = nullptr;

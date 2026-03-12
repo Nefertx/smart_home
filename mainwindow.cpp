@@ -17,7 +17,34 @@
 #include <QScrollArea>
 #include <QResizeEvent>
 #include <QFont>
+#include <QMap>
+#include <QRandomGenerator>
+#include <QStringList>
 #include <QtGlobal>
+
+namespace {
+QMap<QString, QString> parseParams(const QString& params) {
+    QMap<QString, QString> kv;
+    const QStringList pairs = params.split(';', Qt::SkipEmptyParts);
+    for (const QString& p : pairs) {
+        const int idx = p.indexOf('=');
+        if (idx <= 0) {
+            continue;
+        }
+        kv[p.left(idx).trimmed()] = p.mid(idx + 1).trimmed();
+    }
+    return kv;
+}
+
+double randomInRange(double minValue, double maxValue) {
+    const double ratio = QRandomGenerator::global()->generateDouble();
+    return minValue + (maxValue - minValue) * ratio;
+}
+
+double randomAround(double center, double spread, double minValue, double maxValue) {
+    return qBound(minValue, center + randomInRange(-spread, spread), maxValue);
+}
+}
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("智能家居监控平台");
@@ -150,6 +177,104 @@ void MainWindow::setupUI() {
     connect(m_alarmWidget, &AlarmWidget::alarmTriggered, [this](const QString& msg){
         m_alarmWidget->addAlarm("设备异常", msg, "系统");
     });
+    connect(m_settingsWidget, &SettingsWidget::samplingIntervalChanged,
+            this, &MainWindow::applyEnvSamplingInterval);
+
+    setupEnvSampling();
+}
+
+void MainWindow::setupEnvSampling() {
+    if (!m_envSampleTimer) {
+        m_envSampleTimer = new QTimer(this);
+        connect(m_envSampleTimer, &QTimer::timeout, this, &MainWindow::onEnvSamplingTick);
+    }
+
+    const int seconds = DatabaseManager::instance()
+                            ->getSetting("sampling_interval",
+                                         DatabaseManager::instance()->getSetting("refresh_interval", "10"))
+                            .toInt();
+    applyEnvSamplingInterval(seconds);
+}
+
+void MainWindow::applyEnvSamplingInterval(int seconds) {
+    const int safeSeconds = qBound(1, seconds, 3600);
+    if (!m_envSampleTimer) {
+        return;
+    }
+
+    m_envSampleTimer->setInterval(safeSeconds * 1000);
+    if (!m_envSampleTimer->isActive()) {
+        m_envSampleTimer->start();
+    }
+}
+
+void MainWindow::onEnvSamplingTick() {
+    auto envData = DatabaseManager::instance()->getEnvData();
+    double temperature = 25.0;
+    double humidity = 55.0;
+    double airQuality = 32.0;
+    if (!envData.isEmpty()) {
+        const auto& latest = envData.first();
+        temperature = latest.value("temperature").toDouble();
+        humidity = latest.value("humidity").toDouble();
+        airQuality = latest.value("air_quality").toDouble();
+    }
+
+    bool acOnline = false;
+    bool purifierOnline = false;
+    int targetTemp = 24;
+    QString acMode = "自动";
+
+    const auto devices = DatabaseManager::instance()->getDevices();
+    for (const auto& d : devices) {
+        const QString type = d.value("type").toString();
+        const QString status = d.value("status").toString();
+        if (status != "online") {
+            continue;
+        }
+
+        const QMap<QString, QString> kv = parseParams(d.value("params").toString());
+        const bool powerOn = (kv.value("power", "on") != "off");
+        if (!powerOn) {
+            continue;
+        }
+
+        if (type == "空调" && !acOnline) {
+            acOnline = true;
+            targetTemp = kv.value("temp", "24").toInt();
+            acMode = kv.value("mode", "自动");
+        }
+        if (type == "空气净化器") {
+            purifierOnline = true;
+        }
+    }
+
+    if (acOnline) {
+        if (acMode == "制冷") {
+            temperature = randomAround(targetTemp + 0.8, 0.5, targetTemp - 0.4, targetTemp + 2.0);
+            humidity = randomAround(48.0, 2.5, 38.0, 60.0);
+        } else if (acMode == "制热") {
+            temperature = randomAround(targetTemp - 0.5, 0.6, targetTemp - 1.8, targetTemp + 1.2);
+            humidity = randomAround(42.0, 2.5, 30.0, 55.0);
+        } else if (acMode == "除湿") {
+            temperature = randomAround(targetTemp + 0.2, 0.6, targetTemp - 1.0, targetTemp + 1.2);
+            humidity = randomAround(38.0, 2.2, 28.0, 50.0);
+        } else {
+            temperature = randomAround(targetTemp, 0.7, 21.0, 29.0);
+            humidity = randomAround(50.0, 3.0, 36.0, 64.0);
+        }
+    } else {
+        temperature = randomAround(temperature, 0.4, 20.0, 32.0);
+        humidity = randomAround(humidity, 1.2, 30.0, 80.0);
+    }
+
+    if (purifierOnline) {
+        airQuality = randomAround(airQuality - 1.2, 1.5, 8.0, 80.0);
+    } else {
+        airQuality = randomAround(airQuality + 0.6, 1.8, 10.0, 120.0);
+    }
+
+    DatabaseManager::instance()->addEnvData(temperature, humidity, airQuality);
 }
 
 void MainWindow::setupNavBar() {

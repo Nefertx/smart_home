@@ -4,6 +4,7 @@
 #include <QApplication>      // 新增：用于全局样式设置
 #include <QComboBox>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -38,11 +39,14 @@ void SettingsWidget::setupUI() {
     m_themeCombo->setCurrentText(DatabaseManager::instance()->getSetting("theme", "默认主题"));
     sysForm->addRow("界面主题:", m_themeCombo);
 
-    m_refreshSpin = new QSpinBox(panel);
-    m_refreshSpin->setRange(1, 60);
-    m_refreshSpin->setSuffix(" 秒");
-    m_refreshSpin->setValue(DatabaseManager::instance()->getSetting("refresh_interval", "5").toInt());
-    sysForm->addRow("数据刷新间隔:", m_refreshSpin);
+    m_samplingSpin = new QSpinBox(panel);
+    m_samplingSpin->setRange(1, 3600);
+    m_samplingSpin->setSuffix(" 秒");
+    const QString intervalSaved = DatabaseManager::instance()->getSetting(
+        "sampling_interval",
+        DatabaseManager::instance()->getSetting("refresh_interval", "10"));
+    m_samplingSpin->setValue(intervalSaved.toInt());
+    sysForm->addRow("数据采样间隔:", m_samplingSpin);
 
     QHBoxLayout* dbPathLayout = new QHBoxLayout;
     m_dbPathEdit = new QLineEdit(DatabaseManager::instance()->getSetting("db_path", "smart_home.db"), panel);
@@ -67,13 +71,15 @@ void SettingsWidget::setupUI() {
 
 void SettingsWidget::onSaveSettings() {
     DatabaseManager::instance()->setSetting("theme", m_themeCombo->currentText());
-    DatabaseManager::instance()->setSetting("refresh_interval", QString::number(m_refreshSpin->value()));
+    DatabaseManager::instance()->setSetting("sampling_interval", QString::number(m_samplingSpin->value()));
+    DatabaseManager::instance()->setSetting("refresh_interval", QString::number(m_samplingSpin->value()));
     DatabaseManager::instance()->setSetting("db_path", m_dbPathEdit->text());
 
     applyTheme(m_themeCombo->currentText());
+    emit samplingIntervalChanged(m_samplingSpin->value());
 
     // 提示重启生效
-    QMessageBox::information(this, "成功", "设置已保存，修改数据库路径需要重启程序才能生效。");
+    QMessageBox::information(this, "成功", "设置已保存，采样间隔已即时生效；修改数据库路径需要重启程序才能生效。");
 }
 
 // 新增：根据主题名称设置全局样式表

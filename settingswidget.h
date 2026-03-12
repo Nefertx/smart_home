@@ -6,6 +6,9 @@ class SettingsWidget : public QWidget {
 public:
     explicit SettingsWidget(QWidget* parent = nullptr);
 
+signals:
+    void samplingIntervalChanged(int seconds);
+
 private slots:
     void onSaveSettings();
 
@@ -14,6 +17,6 @@ private:
     void applyTheme(const QString& themeName);  // 新增：应用主题
 
     class QComboBox* m_themeCombo = nullptr;
-    class QSpinBox* m_refreshSpin = nullptr;
+    class QSpinBox* m_samplingSpin = nullptr;
     class QLineEdit* m_dbPathEdit = nullptr;
 };
