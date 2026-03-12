@@ -41,7 +41,11 @@ void AlarmWidget::setupUI() {
     threshLay->addWidget(m_humidThresh);
 
     QPushButton* manualCheckBtn = new QPushButton("立即检查", threshBox);
-    manualCheckBtn->setStyleSheet("background:#e67e22;color:white;padding:5px 12px;border-radius:4px;");
+    manualCheckBtn->setStyleSheet(
+        "QPushButton{background:#e67e22;color:white;padding:5px 12px;border-radius:4px;}"
+        "QPushButton:hover{background:#f39c12;}"
+        "QPushButton:pressed{background:#b85e1a;}"
+        );
     connect(manualCheckBtn, &QPushButton::clicked, this, &AlarmWidget::onCheckAlarms);
     threshLay->addWidget(manualCheckBtn);
     threshLay->addStretch();
@@ -66,7 +70,11 @@ void AlarmWidget::setupUI() {
 
     QHBoxLayout* btnRow = new QHBoxLayout();
     QPushButton* refreshBtn = new QPushButton("🔄 刷新", tableBox);
-    refreshBtn->setStyleSheet("background:#3498db;color:white;padding:5px 12px;border-radius:4px;");
+    refreshBtn->setStyleSheet(
+        "QPushButton{background:#3498db;color:white;padding:5px 12px;border-radius:4px;}"
+        "QPushButton:hover{background:#5dade2;}"
+        "QPushButton:pressed{background:#1f6a9a;}"
+        );
     connect(refreshBtn, &QPushButton::clicked, this, &AlarmWidget::loadAlarms);
 
     QPushButton* deleteBtn = new QPushButton("🗑 删除选中", tableBox);
@@ -165,7 +173,7 @@ void AlarmWidget::checkThresholds() {
             }
             if (!alreadyAlarmed) {
                 DatabaseManager::instance()->addAlarm("设备离线",
-                    d["name"].toString() + " 当前处于离线状态", d["name"].toString());
+                                                      d["name"].toString() + " 当前处于离线状态", d["name"].toString());
                 loadAlarms();
             }
         }
