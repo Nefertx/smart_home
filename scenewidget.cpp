@@ -1,21 +1,87 @@
 #include "scenewidget.h"
 #include "databasemanager.h"
-#include <QHBoxLayout>
-#include <QVBoxLayout>
-#include <QListWidget>
-#include <QLabel>
-#include <QPushButton>
-#include <QGroupBox>
-#include <QSplitter>
-#include <QDialog>
-#include <QFormLayout>
-#include <QLineEdit>
-#include <QTextEdit>
-#include <QDialogButtonBox>
+
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QGroupBox>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QListWidget>
+#include <QMap>
 #include <QMessageBox>
+#include <QPair>
+#include <QPushButton>
 #include <QScrollArea>
+#include <QSplitter>
+#include <QVariant>
+#include <QVBoxLayout>
+
+namespace {
+using ActionOption = QPair<QString, QString>; // action label, params template
+
+QMap<QString, QString> parseParams(const QString& params) {
+    QMap<QString, QString> kv;
+    const QStringList parts = params.split(';', Qt::SkipEmptyParts);
+    for (const QString& p : parts) {
+        const int i = p.indexOf('=');
+        if (i <= 0) {
+            continue;
+        }
+        kv[p.left(i).trimmed()] = p.mid(i + 1).trimmed();
+    }
+    return kv;
+}
+
+QString buildParams(const QMap<QString, QString>& kv) {
+    QStringList out;
+    for (auto it = kv.constBegin(); it != kv.constEnd(); ++it) {
+        out << QString("%1=%2").arg(it.key(), it.value());
+    }
+    return out.join(';');
+}
+
+QString mergeParams(const QString& base, const QString& updates) {
+    QMap<QString, QString> kv = parseParams(base);
+    const QMap<QString, QString> patch = parseParams(updates);
+    for (auto it = patch.constBegin(); it != patch.constEnd(); ++it) {
+        kv[it.key()] = it.value();
+    }
+    return buildParams(kv);
+}
+
+QList<ActionOption> actionOptionsForDevice(const QString& type, const QString& name) {
+    QList<ActionOption> options;
+    if (type == "空调") {
+        options << ActionOption("开机-制冷24中风", "power=on;mode=制冷;temp=24;fan=中")
+                << ActionOption("开机-制热26低风", "power=on;mode=制热;temp=26;fan=低")
+                << ActionOption("开机-除湿", "power=on;mode=除湿;fan=自动")
+                << ActionOption("关机", "power=off");
+    } else if (type == "灯光") {
+        const bool supportsColor = name.contains("客厅");
+        options << ActionOption("开灯", "power=on");
+        if (supportsColor) {
+            options << ActionOption("开灯-暖白80%", "power=on;brightness=80;color=暖白")
+                    << ActionOption("开灯-夜灯30%", "power=on;brightness=30;color=暖白");
+        }
+        options << ActionOption("关灯", "power=off");
+    } else if (type == "窗帘") {
+        options << ActionOption("打开窗帘", "power=on;open=100")
+                << ActionOption("半开窗帘", "power=on;open=50")
+                << ActionOption("关闭窗帘", "power=off;open=0");
+    } else if (type == "摄像头") {
+        options << ActionOption("开启监控", "power=on")
+                << ActionOption("关闭监控", "power=off");
+    } else {
+        options << ActionOption("开机", "power=on")
+                << ActionOption("关机", "power=off");
+    }
+    return options;
+}
+} // namespace
 
 SceneWidget::SceneWidget(const QString& username, QWidget* parent)
     : QWidget(parent), m_username(username) {
@@ -25,7 +91,7 @@ SceneWidget::SceneWidget(const QString& username, QWidget* parent)
 
 void SceneWidget::setupUI() {
     QVBoxLayout* vl = new QVBoxLayout(this);
-    vl->setContentsMargins(12,12,12,12);
+    vl->setContentsMargins(12, 12, 12, 12);
 
     QLabel* title = new QLabel("场景模式设置", this);
     title->setStyleSheet("font-size:16px;font-weight:bold;color:#2c3e50;");
@@ -33,10 +99,9 @@ void SceneWidget::setupUI() {
 
     QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
 
-    // 左：场景列表
     QWidget* left = new QWidget(splitter);
     QVBoxLayout* leftVl = new QVBoxLayout(left);
-    leftVl->setContentsMargins(0,0,0,0);
+    leftVl->setContentsMargins(0, 0, 0, 0);
     QLabel* listLbl = new QLabel("场景列表", left);
     listLbl->setStyleSheet("font-weight:bold;color:#555;");
     leftVl->addWidget(listLbl);
@@ -51,17 +116,16 @@ void SceneWidget::setupUI() {
     auto makeBtn = [&](const QString& text, const char* slot, const QString& color) {
         QPushButton* btn = new QPushButton(text, left);
         btn->setStyleSheet(QString("QPushButton{background:%1;color:white;border-radius:4px;padding:5px;}"
-                                   "QPushButton:hover{opacity:0.85;}").arg(color));
+                                   "QPushButton:hover{opacity:0.85;}")
+                               .arg(color));
         connect(btn, SIGNAL(clicked()), this, slot);
         btnRow->addWidget(btn);
-        return btn;
     };
     makeBtn("➕ 新建", SLOT(onAddScene()), "#27ae60");
     makeBtn("✏️ 编辑", SLOT(onEditScene()), "#e67e22");
     makeBtn("🗑 删除", SLOT(onDeleteScene()), "#e74c3c");
     leftVl->addLayout(btnRow);
 
-    // 右：场景详情
     QWidget* right = new QWidget(splitter);
     QVBoxLayout* rightVl = new QVBoxLayout(right);
 
@@ -76,7 +140,7 @@ void SceneWidget::setupUI() {
     QGroupBox* devBox = new QGroupBox("绑定设备操作", right);
     QVBoxLayout* devVl = new QVBoxLayout(devBox);
     m_deviceList = new QListWidget(devBox);
-    m_deviceList->setMaximumHeight(180);
+    m_deviceList->setMaximumHeight(220);
     devVl->addWidget(m_deviceList);
     rightVl->addWidget(devBox);
 
@@ -106,12 +170,15 @@ void SceneWidget::loadScenes() {
 }
 
 void SceneWidget::onSceneSelected(int row) {
-    if (row < 0) return;
+    if (row < 0) {
+        return;
+    }
     QListWidgetItem* item = m_sceneList->item(row);
-    if (!item) return;
+    if (!item) {
+        return;
+    }
     m_selectedSceneId = item->data(Qt::UserRole).toInt();
 
-    // 显示场景描述
     auto scenes = DatabaseManager::instance()->getScenes();
     for (const auto& s : scenes) {
         if (s["id"].toInt() == m_selectedSceneId) {
@@ -120,12 +187,14 @@ void SceneWidget::onSceneSelected(int row) {
         }
     }
 
-    // 显示绑定设备
     m_deviceList->clear();
     auto devs = DatabaseManager::instance()->getSceneDevices(m_selectedSceneId);
     for (const auto& d : devs) {
-        m_deviceList->addItem(QString("📌 %1 → %2 %3").arg(
-            d["name"].toString(), d["action"].toString(), d["params"].toString()));
+        const QString params = d["params"].toString();
+        m_deviceList->addItem(QString("📌 %1 → %2%3")
+                                  .arg(d["name"].toString(),
+                                       d["action"].toString(),
+                                       params.isEmpty() ? "" : (" (" + params + ")")));
     }
     m_activateBtn->setEnabled(true);
 }
@@ -133,7 +202,7 @@ void SceneWidget::onSceneSelected(int row) {
 void SceneWidget::onAddScene() {
     QDialog dlg(this);
     dlg.setWindowTitle("新建场景");
-    dlg.setFixedWidth(460);
+    dlg.setFixedWidth(520);
     QVBoxLayout* vl = new QVBoxLayout(&dlg);
 
     QFormLayout* form = new QFormLayout();
@@ -143,7 +212,6 @@ void SceneWidget::onAddScene() {
     form->addRow("场景描述:", descEdit);
     vl->addLayout(form);
 
-    // 设备选择区域
     QGroupBox* devBox = new QGroupBox("选择绑定设备及操作", &dlg);
     QVBoxLayout* devVl = new QVBoxLayout(devBox);
     QScrollArea* scroll = new QScrollArea(&dlg);
@@ -156,47 +224,63 @@ void SceneWidget::onAddScene() {
         QHBoxLayout* row = new QHBoxLayout();
         QCheckBox* cb = new QCheckBox(d["name"].toString() + " [" + d["type"].toString() + "]", scrollContent);
         cb->setProperty("deviceId", d["id"]);
+
         QComboBox* actionCombo = new QComboBox(scrollContent);
-        actionCombo->addItems({"开启","关闭","设置参数"});
+        const auto options = actionOptionsForDevice(d["type"].toString(), d["name"].toString());
+        for (const auto& opt : options) {
+            actionCombo->addItem(opt.first, opt.second);
+        }
+
         row->addWidget(cb);
         row->addWidget(actionCombo);
         scrollVl->addLayout(row);
-        devControls.append({cb, actionCombo});
+        devControls.append(qMakePair(cb, actionCombo));
     }
     scrollContent->setLayout(scrollVl);
     scroll->setWidget(scrollContent);
-    scroll->setFixedHeight(200);
+    scroll->setFixedHeight(220);
     devVl->addWidget(scroll);
     vl->addWidget(devBox);
 
     QDialogButtonBox* bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     vl->addWidget(bb);
-    connect(bb, &QDialogButtonBox::accepted, &dlg, [&]{
-        if (nameEdit->text().isEmpty()) {
-            QMessageBox::warning(&dlg, "错误", "场景名称不能为空"); return;
+    connect(bb, &QDialogButtonBox::accepted, &dlg, [&] {
+        if (nameEdit->text().trimmed().isEmpty()) {
+            QMessageBox::warning(&dlg, "错误", "场景名称不能为空");
+            return;
         }
-        if (DatabaseManager::instance()->addScene(nameEdit->text(), descEdit->text())) {
-            // 获取新场景ID
-            auto scenes = DatabaseManager::instance()->getScenes();
-            int newId = -1;
-            for (const auto& s : scenes)
-                if (s["name"].toString() == nameEdit->text()) { newId = s["id"].toInt(); break; }
-            if (newId > 0) {
-                for (const auto& pair : devControls) {
-                    if (pair.first->isChecked()) {
-                        int devId = pair.first->property("deviceId").toInt();
-                        DatabaseManager::instance()->addSceneDevice(
-                            newId, devId, pair.second->currentText(), "");
-                    }
-                }
-            }
-            dlg.accept();
-        } else {
+        if (!DatabaseManager::instance()->addScene(nameEdit->text().trimmed(), descEdit->text().trimmed())) {
             QMessageBox::warning(&dlg, "错误", "场景名称已存在");
+            return;
         }
+
+        auto scenes = DatabaseManager::instance()->getScenes();
+        int newId = -1;
+        for (const auto& s : scenes) {
+            if (s["name"].toString() == nameEdit->text().trimmed()) {
+                newId = s["id"].toInt();
+                break;
+            }
+        }
+
+        if (newId > 0) {
+            for (const auto& pair : devControls) {
+                if (!pair.first->isChecked()) {
+                    continue;
+                }
+                const int devId = pair.first->property("deviceId").toInt();
+                const QString action = pair.second->currentText();
+                const QString params = pair.second->currentData().toString();
+                DatabaseManager::instance()->addSceneDevice(newId, devId, action, params);
+            }
+        }
+        dlg.accept();
     });
     connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-    if (dlg.exec() == QDialog::Accepted) loadScenes();
+
+    if (dlg.exec() == QDialog::Accepted) {
+        loadScenes();
+    }
 }
 
 void SceneWidget::onEditScene() {
@@ -205,9 +289,9 @@ void SceneWidget::onEditScene() {
         return;
     }
 
-    // 获取当前场景的基本信息
     auto scenes = DatabaseManager::instance()->getScenes();
-    QString curName, curDesc;
+    QString curName;
+    QString curDesc;
     for (const auto& s : scenes) {
         if (s["id"].toInt() == m_selectedSceneId) {
             curName = s["name"].toString();
@@ -216,20 +300,17 @@ void SceneWidget::onEditScene() {
         }
     }
 
-    // 获取当前场景已绑定的设备（用于预置选中状态）
     auto currentDevices = DatabaseManager::instance()->getSceneDevices(m_selectedSceneId);
-    QMap<int, QString> deviceActionMap;
+    QMap<int, QPair<QString, QString>> selectedMap; // deviceId -> (action, params)
     for (const auto& d : currentDevices) {
-        deviceActionMap[d["device_id"].toInt()] = d["action"].toString();
+        selectedMap[d["device_id"].toInt()] = qMakePair(d["action"].toString(), d["params"].toString());
     }
 
     QDialog dlg(this);
     dlg.setWindowTitle("编辑场景");
-    dlg.setFixedWidth(500);  // 调宽以容纳设备列表
-
+    dlg.setFixedWidth(520);
     QVBoxLayout* mainLayout = new QVBoxLayout(&dlg);
 
-    // 名称和描述输入
     QFormLayout* form = new QFormLayout();
     QLineEdit* nameEdit = new QLineEdit(curName, &dlg);
     QLineEdit* descEdit = new QLineEdit(curDesc, &dlg);
@@ -237,7 +318,6 @@ void SceneWidget::onEditScene() {
     form->addRow("场景描述:", descEdit);
     mainLayout->addLayout(form);
 
-    // ----- 设备选择区域（复制自 onAddScene）-----
     QGroupBox* devBox = new QGroupBox("选择绑定设备及操作", &dlg);
     QVBoxLayout* devVl = new QVBoxLayout(devBox);
     QScrollArea* scroll = new QScrollArea(&dlg);
@@ -247,65 +327,66 @@ void SceneWidget::onEditScene() {
     auto devices = DatabaseManager::instance()->getDevices();
     QList<QPair<QCheckBox*, QComboBox*>> devControls;
     for (const auto& d : devices) {
-        int devId = d["id"].toInt();
-        QString devName = d["name"].toString();
-        QString devType = d["type"].toString();
-
+        const int devId = d["id"].toInt();
         QHBoxLayout* row = new QHBoxLayout();
-        QCheckBox* cb = new QCheckBox(devName + " [" + devType + "]", scrollContent);
+
+        QCheckBox* cb = new QCheckBox(d["name"].toString() + " [" + d["type"].toString() + "]", scrollContent);
         cb->setProperty("deviceId", devId);
 
         QComboBox* actionCombo = new QComboBox(scrollContent);
-        actionCombo->addItems({"开启", "关闭", "设置参数"});
+        const auto options = actionOptionsForDevice(d["type"].toString(), d["name"].toString());
+        for (const auto& opt : options) {
+            actionCombo->addItem(opt.first, opt.second);
+        }
 
-        // 如果当前设备已绑定，则勾选并设置动作
-        if (deviceActionMap.contains(devId)) {
+        if (selectedMap.contains(devId)) {
             cb->setChecked(true);
-            QString action = deviceActionMap[devId];
-            int index = actionCombo->findText(action);
-            if (index >= 0) actionCombo->setCurrentIndex(index);
+            const QString action = selectedMap[devId].first;
+            const QString params = selectedMap[devId].second;
+            int idx = actionCombo->findText(action);
+            if (idx < 0) {
+                idx = actionCombo->findData(params);
+            }
+            if (idx >= 0) {
+                actionCombo->setCurrentIndex(idx);
+            }
         }
 
         row->addWidget(cb);
         row->addWidget(actionCombo);
         scrollVl->addLayout(row);
-        devControls.append({cb, actionCombo});
+        devControls.append(qMakePair(cb, actionCombo));
     }
 
     scrollContent->setLayout(scrollVl);
     scroll->setWidget(scrollContent);
-    scroll->setFixedHeight(200);
+    scroll->setFixedHeight(220);
     devVl->addWidget(scroll);
     mainLayout->addWidget(devBox);
-    // --------------------------------------------
 
     QDialogButtonBox* bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     mainLayout->addWidget(bb);
 
     connect(bb, &QDialogButtonBox::accepted, &dlg, [&] {
-        // 1. 更新场景名称和描述
-        DatabaseManager::instance()->updateScene(m_selectedSceneId, nameEdit->text(), descEdit->text());
-
-        // 2. 删除旧的设备绑定（使用已有的批量删除方法）
+        DatabaseManager::instance()->updateScene(m_selectedSceneId, nameEdit->text().trimmed(), descEdit->text().trimmed());
         DatabaseManager::instance()->deleteSceneDevices(m_selectedSceneId);
 
-        // 3. 添加新的设备绑定
         for (const auto& pair : devControls) {
-            if (pair.first->isChecked()) {
-                int devId = pair.first->property("deviceId").toInt();
-                QString action = pair.second->currentText();
-                DatabaseManager::instance()->addSceneDevice(m_selectedSceneId, devId, action, "");
+            if (!pair.first->isChecked()) {
+                continue;
             }
+            const int devId = pair.first->property("deviceId").toInt();
+            const QString action = pair.second->currentText();
+            const QString params = pair.second->currentData().toString();
+            DatabaseManager::instance()->addSceneDevice(m_selectedSceneId, devId, action, params);
         }
-
         dlg.accept();
     });
 
     connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
 
     if (dlg.exec() == QDialog::Accepted) {
-        loadScenes();  // 刷新列表
-        // 重新选中当前编辑的场景（因为列表刷新后选中状态会丢失）
+        loadScenes();
         for (int i = 0; i < m_sceneList->count(); ++i) {
             QListWidgetItem* item = m_sceneList->item(i);
             if (item->data(Qt::UserRole).toInt() == m_selectedSceneId) {
@@ -317,28 +398,64 @@ void SceneWidget::onEditScene() {
 }
 
 void SceneWidget::onDeleteScene() {
-    if (m_selectedSceneId < 0) { QMessageBox::information(this,"提示","请先选择一个场景"); return; }
-    if (QMessageBox::question(this,"确认","确定要删除该场景吗？") == QMessageBox::Yes) {
-        DatabaseManager::instance()->deleteScene(m_selectedSceneId);
-        m_selectedSceneId = -1;
-        m_activateBtn->setEnabled(false);
-        m_descLbl->setText("请选择一个场景");
-        m_deviceList->clear();
-        loadScenes();
+    if (m_selectedSceneId < 0) {
+        QMessageBox::information(this, "提示", "请先选择一个场景");
+        return;
     }
+    if (QMessageBox::question(this, "确认", "确定要删除该场景吗？") != QMessageBox::Yes) {
+        return;
+    }
+
+    DatabaseManager::instance()->deleteScene(m_selectedSceneId);
+    m_selectedSceneId = -1;
+    m_activateBtn->setEnabled(false);
+    m_descLbl->setText("请选择一个场景");
+    m_deviceList->clear();
+    loadScenes();
 }
 
 void SceneWidget::onActivateScene() {
-    if (m_selectedSceneId < 0) return;
-    auto devs = DatabaseManager::instance()->getSceneDevices(m_selectedSceneId);
-    int count = 0;
-    for (const auto& d : devs) {
-        QString action = d["action"].toString();
-        QString newStatus = (action == "关闭") ? "offline" : "online";
-        DatabaseManager::instance()->updateDeviceStatus(d["device_id"].toInt(), newStatus, d["params"].toString());
-        DatabaseManager::instance()->addOperationLog(m_username, d["name"].toString(),
-                                                      "场景触发:" + action, "success");
-        count++;
+    if (m_selectedSceneId < 0) {
+        return;
     }
-    QMessageBox::information(this, "场景激活", QString("场景已激活，共执行 %1 个设备操作").arg(count));
+
+    auto devs = DatabaseManager::instance()->getSceneDevices(m_selectedSceneId);
+    int executed = 0;
+    int skippedOffline = 0;
+
+    for (const auto& d : devs) {
+        const int devId = d["device_id"].toInt();
+        const auto device = DatabaseManager::instance()->getDeviceById(devId);
+        if (device.isEmpty()) {
+            continue;
+        }
+
+        if (device["status"].toString() != "online") {
+            DatabaseManager::instance()->addOperationLog(
+                m_username,
+                d["name"].toString(),
+                "场景跳过:" + d["action"].toString(),
+                "offline_skip");
+            ++skippedOffline;
+            continue;
+        }
+
+        const QString merged = d["params"].toString().isEmpty()
+                                   ? device["params"].toString()
+                                   : mergeParams(device["params"].toString(), d["params"].toString());
+
+        DatabaseManager::instance()->updateDeviceStatus(devId, "online", merged);
+        DatabaseManager::instance()->addOperationLog(
+            m_username,
+            d["name"].toString(),
+            "场景触发:" + d["action"].toString(),
+            "success");
+        ++executed;
+    }
+
+    QMessageBox::information(this,
+                             "场景激活",
+                             QString("场景已激活，执行 %1 个操作，跳过离线设备 %2 个。")
+                                 .arg(executed)
+                                 .arg(skippedOffline));
 }

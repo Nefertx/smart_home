@@ -26,6 +26,69 @@ bool DatabaseManager::init(const QString& dbPath) {
     if (q.next() && q.value(0).toInt() == 0) {
         addUser("admin", "admin123", "admin");
     }
+
+    // Demo normalization on each startup:
+    // 1) remove standalone sensor sample, 2) ensure demo devices are online.
+    q.exec("DELETE FROM devices WHERE type='传感器'");
+    q.exec("UPDATE devices SET status='online' WHERE name IN ('客厅灯','卧室灯','客厅空调','客厅窗帘','门口摄像头')");
+    q.exec("DELETE FROM scene_devices WHERE device_id NOT IN (SELECT id FROM devices)");
+
+    auto findIdByName = [this](const QString& table, const QString& name) -> int {
+        QSqlQuery x(m_db);
+        x.prepare(QString("SELECT id FROM %1 WHERE name=? LIMIT 1").arg(table));
+        x.addBindValue(name);
+        if (x.exec() && x.next()) {
+            return x.value(0).toInt();
+        }
+        return -1;
+    };
+
+    const int sceneHome = findIdByName("scenes", "回家模式");
+    const int sceneSleep = findIdByName("scenes", "睡眠模式");
+    const int sceneAway = findIdByName("scenes", "离家模式");
+
+    const int devLivingLight = findIdByName("devices", "客厅灯");
+    const int devBedLight = findIdByName("devices", "卧室灯");
+    const int devAc = findIdByName("devices", "客厅空调");
+    const int devCurtain = findIdByName("devices", "客厅窗帘");
+    const int devCam = findIdByName("devices", "门口摄像头");
+
+    auto resetSceneBindings = [this](int sceneId, const QList<QList<QVariant>>& ops) {
+        if (sceneId <= 0) {
+            return;
+        }
+        deleteSceneDevices(sceneId);
+        for (const auto& op : ops) {
+            const int devId = op[0].toInt();
+            if (devId <= 0) {
+                continue;
+            }
+            addSceneDevice(sceneId, devId, op[1].toString(), op[2].toString());
+        }
+    };
+
+    resetSceneBindings(sceneHome,
+                       {
+                           {devLivingLight, "开灯-暖白80%", "power=on;brightness=80;color=暖白"},
+                           {devAc, "开机-制冷24中风", "power=on;mode=制冷;temp=24;fan=中"},
+                           {devCurtain, "打开窗帘", "power=on;open=100"},
+                       });
+    resetSceneBindings(sceneSleep,
+                       {
+                           {devLivingLight, "关灯", "power=off"},
+                           {devBedLight, "关灯", "power=off"},
+                           {devAc, "开机-除湿", "power=on;mode=除湿;fan=自动"},
+                           {devCurtain, "关闭窗帘", "power=off;open=0"},
+                       });
+    resetSceneBindings(sceneAway,
+                       {
+                           {devLivingLight, "关灯", "power=off"},
+                           {devBedLight, "关灯", "power=off"},
+                           {devAc, "关机", "power=off"},
+                           {devCurtain, "关闭窗帘", "power=off;open=0"},
+                           {devCam, "开启监控", "power=on"},
+                       });
+
     return true;
 }
 
@@ -123,6 +186,7 @@ void DatabaseManager::createTables() {
         q.exec("INSERT INTO scenes(name,description) VALUES('回家模式','开灯、开空调、拉开窗帘')");
         q.exec("INSERT INTO scenes(name,description) VALUES('睡眠模式','关灯、关空调、关闭窗帘')");
         q.exec("INSERT INTO scenes(name,description) VALUES('离家模式','关闭所有设备')");
+
     }
 }
 
