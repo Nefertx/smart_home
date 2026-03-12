@@ -29,10 +29,6 @@ bool DatabaseManager::init(const QString& dbPath) {
 
     // Demo normalization on each startup:
     // 1) remove standalone sensor sample, 2) ensure demo devices are online.
-    q.exec("DELETE FROM devices WHERE type='传感器'");
-    q.exec("UPDATE devices SET status='online' WHERE name IN ('客厅灯','卧室灯','客厅空调','客厅窗帘','门口摄像头')");
-    q.exec("DELETE FROM scene_devices WHERE device_id NOT IN (SELECT id FROM devices)");
-
     auto findIdByName = [this](const QString& table, const QString& name) -> int {
         QSqlQuery x(m_db);
         x.prepare(QString("SELECT id FROM %1 WHERE name=? LIMIT 1").arg(table));
@@ -43,6 +39,50 @@ bool DatabaseManager::init(const QString& dbPath) {
         return -1;
     };
 
+    auto ensureDevice = [this, &findIdByName](const QString& name,
+                                              const QString& type,
+                                              const QString& group,
+                                              const QString& ip,
+                                              int port,
+                                              const QString& status,
+                                              const QString& params) {
+        if (findIdByName("devices", name) > 0) {
+            return;
+        }
+
+        QSqlQuery insert(m_db);
+        insert.prepare("INSERT INTO devices(name,type,grp,ip,port,status,params) VALUES(?,?,?,?,?,?,?)");
+        insert.addBindValue(name);
+        insert.addBindValue(type);
+        insert.addBindValue(group);
+        insert.addBindValue(ip);
+        insert.addBindValue(port);
+        insert.addBindValue(status);
+        insert.addBindValue(params);
+        insert.exec();
+    };
+
+    q.exec("DELETE FROM devices WHERE type='传感器'");
+    ensureDevice("客厅灯", "灯光", "客厅", "127.0.0.1", 8081, "online", "power=on;brightness=80;color=暖白");
+    ensureDevice("卧室灯", "灯光", "卧室", "127.0.0.1", 8082, "offline", "");
+    ensureDevice("客厅空调", "空调", "客厅", "127.0.0.1", 8083, "online", "power=on;mode=制冷;temp=24;fan=中;current_temp=24.7;current_humidity=48.5");
+    ensureDevice("客厅窗帘", "窗帘", "客厅", "127.0.0.1", 8084, "online", "power=on;open=60");
+    ensureDevice("门口摄像头", "摄像头", "门口", "127.0.0.1", 8085, "online", "power=on");
+    ensureDevice("客厅空气净化器", "空气净化器", "客厅", "127.0.0.1", 8086, "online", "power=on;air_quality=18.5");
+
+    q.exec("UPDATE devices SET status='online' WHERE name IN ('客厅灯','卧室灯','客厅空调','客厅窗帘','门口摄像头','客厅空气净化器')");
+    q.exec("DELETE FROM scene_devices WHERE device_id NOT IN (SELECT id FROM devices)");
+
+    q.exec("SELECT COUNT(*) FROM env_data");
+    if (q.next() && q.value(0).toInt() == 0) {
+        QStringList envSeed = {
+            "INSERT INTO env_data(temperature,humidity,air_quality) VALUES(25.2,56.0,31.2)",
+            "INSERT INTO env_data(temperature,humidity,air_quality) VALUES(24.8,57.3,30.6)",
+            "INSERT INTO env_data(temperature,humidity,air_quality) VALUES(25.0,55.4,29.9)"
+        };
+        for (const auto& sql : envSeed) q.exec(sql);
+    }
+
     const int sceneHome = findIdByName("scenes", "回家模式");
     const int sceneSleep = findIdByName("scenes", "睡眠模式");
     const int sceneAway = findIdByName("scenes", "离家模式");
@@ -52,6 +92,7 @@ bool DatabaseManager::init(const QString& dbPath) {
     const int devAc = findIdByName("devices", "客厅空调");
     const int devCurtain = findIdByName("devices", "客厅窗帘");
     const int devCam = findIdByName("devices", "门口摄像头");
+    const int devPurifier = findIdByName("devices", "客厅空气净化器");
 
     auto resetSceneBindings = [this](int sceneId, const QList<QList<QVariant>>& ops) {
         if (sceneId <= 0) {
@@ -72,6 +113,7 @@ bool DatabaseManager::init(const QString& dbPath) {
                            {devLivingLight, "开灯-暖白80%", "power=on;brightness=80;color=暖白"},
                            {devAc, "开机-制冷24中风", "power=on;mode=制冷;temp=24;fan=中"},
                            {devCurtain, "打开窗帘", "power=on;open=100"},
+                           {devPurifier, "开启净化", "power=on"},
                        });
     resetSceneBindings(sceneSleep,
                        {
@@ -79,6 +121,7 @@ bool DatabaseManager::init(const QString& dbPath) {
                            {devBedLight, "关灯", "power=off"},
                            {devAc, "开机-除湿", "power=on;mode=除湿;fan=自动"},
                            {devCurtain, "关闭窗帘", "power=off;open=0"},
+                           {devPurifier, "开启净化", "power=on"},
                        });
     resetSceneBindings(sceneAway,
                        {
@@ -87,6 +130,7 @@ bool DatabaseManager::init(const QString& dbPath) {
                            {devAc, "关机", "power=off"},
                            {devCurtain, "关闭窗帘", "power=off;open=0"},
                            {devCam, "开启监控", "power=on"},
+                           {devPurifier, "关闭净化", "power=off"},
                        });
 
     return true;
@@ -169,9 +213,10 @@ void DatabaseManager::createTables() {
         QStringList initDevices = {
             "INSERT INTO devices(name,type,grp,ip,port,status,params) VALUES('客厅灯','灯光','客厅','127.0.0.1',8081,'online','power=on;brightness=80;color=暖白')",
             "INSERT INTO devices(name,type,grp,ip,port,status) VALUES('卧室灯','灯光','卧室','127.0.0.1',8082,'offline')",
-            "INSERT INTO devices(name,type,grp,ip,port,status,params) VALUES('客厅空调','空调','客厅','127.0.0.1',8083,'online','power=on;mode=制冷;temp=24;fan=中')",
+            "INSERT INTO devices(name,type,grp,ip,port,status,params) VALUES('客厅空调','空调','客厅','127.0.0.1',8083,'online','power=on;mode=制冷;temp=24;fan=中;current_temp=24.7;current_humidity=48.5')",
             "INSERT INTO devices(name,type,grp,ip,port,status,params) VALUES('客厅窗帘','窗帘','客厅','127.0.0.1',8084,'online','power=on;open=60')",
-            "INSERT INTO devices(name,type,grp,ip,port,status,params) VALUES('门口摄像头','摄像头','门口','127.0.0.1',8085,'online','power=on')"
+            "INSERT INTO devices(name,type,grp,ip,port,status,params) VALUES('门口摄像头','摄像头','门口','127.0.0.1',8085,'online','power=on')",
+            "INSERT INTO devices(name,type,grp,ip,port,status,params) VALUES('客厅空气净化器','空气净化器','客厅','127.0.0.1',8086,'online','power=on;air_quality=18.5')"
         };
         for (const auto& sql : initDevices) q.exec(sql);
 
@@ -348,10 +393,18 @@ QList<QMap<QString,QVariant>> DatabaseManager::getSceneDevices(int sceneId) {
 
 bool DatabaseManager::addOperationLog(const QString& user, const QString& deviceName,
                                       const QString& action, const QString& result) {
+    QString deviceType;
+    QSqlQuery typeQuery(m_db);
+    typeQuery.prepare("SELECT type FROM devices WHERE name=? ORDER BY id DESC LIMIT 1");
+    typeQuery.addBindValue(deviceName);
+    if (typeQuery.exec() && typeQuery.next()) {
+        deviceType = typeQuery.value(0).toString();
+    }
+
     QSqlQuery q(m_db);
-    q.prepare("INSERT INTO operation_logs(username,device_name,action,result) VALUES(?,?,?,?)");
+    q.prepare("INSERT INTO operation_logs(username,device_name,device_type,action,result) VALUES(?,?,?,?,?)");
     q.addBindValue(user); q.addBindValue(deviceName);
-    q.addBindValue(action); q.addBindValue(result);
+    q.addBindValue(deviceType); q.addBindValue(action); q.addBindValue(result);
     return q.exec();
 }
 
@@ -360,11 +413,16 @@ QList<QMap<QString,QVariant>> DatabaseManager::getOperationLogs(const QString& d
                                                                   const QString& endDate) {
     QList<QMap<QString,QVariant>> result;
     QString sql = "SELECT id,username,device_name,action,result,created_at FROM operation_logs WHERE 1=1";
-    if (!deviceType.isEmpty()) sql += " AND device_name LIKE '%" + deviceType + "%'";
-    if (!startDate.isEmpty()) sql += " AND created_at >= '" + startDate + "'";
-    if (!endDate.isEmpty()) sql += " AND created_at <= '" + endDate + " 23:59:59'";
+    if (!deviceType.isEmpty()) sql += " AND device_type = ?";
+    if (!startDate.isEmpty()) sql += " AND created_at >= ?";
+    if (!endDate.isEmpty()) sql += " AND created_at <= ?";
     sql += " ORDER BY created_at DESC LIMIT 500";
-    QSqlQuery q(sql, m_db);
+    QSqlQuery q(m_db);
+    q.prepare(sql);
+    if (!deviceType.isEmpty()) q.addBindValue(deviceType);
+    if (!startDate.isEmpty()) q.addBindValue(startDate);
+    if (!endDate.isEmpty()) q.addBindValue(endDate + " 23:59:59");
+    q.exec();
     while (q.next()) {
         QMap<QString,QVariant> row;
         row["id"] = q.value(0); row["username"] = q.value(1);

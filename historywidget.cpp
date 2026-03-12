@@ -20,6 +20,19 @@
 #include <QMessageBox>
 #include <QDate>
 
+namespace {
+QString buttonStyle(const QString& color,
+                    const QString& hoverColor,
+                    const QString& pressedColor,
+                    const QString& padding = "5px 14px",
+                    int radius = 4) {
+    return QString("QPushButton{background:%1;color:white;padding:%2;border-radius:%3px;}"
+                   "QPushButton:hover{background:%4;}"
+                   "QPushButton:pressed{background:%5;}")
+        .arg(color, padding, QString::number(radius), hoverColor, pressedColor);
+}
+}
+
 HistoryWidget::HistoryWidget(QWidget* parent) : QWidget(parent) {
     setupUI();
     loadData();
@@ -51,16 +64,16 @@ void HistoryWidget::setupUI() {
 
     filterLay->addWidget(new QLabel("设备类型:"));
     m_typeFilter = new QComboBox(filterBox);
-    m_typeFilter->addItems({"全部","灯光","空调","窗帘","摄像头"});
+    m_typeFilter->addItems({"全部","灯光","空调","窗帘","摄像头","空气净化器"});
     filterLay->addWidget(m_typeFilter);
 
     QPushButton* queryBtn = new QPushButton("🔍 查询", filterBox);
-    queryBtn->setStyleSheet("background:#3498db;color:white;padding:5px 14px;border-radius:4px;");
+    queryBtn->setStyleSheet(buttonStyle("#3498db", "#5dade2", "#1f6a9a"));
     connect(queryBtn, &QPushButton::clicked, this, &HistoryWidget::onQuery);
     filterLay->addWidget(queryBtn);
 
     QPushButton* exportBtn = new QPushButton("📤 导出CSV", filterBox);
-    exportBtn->setStyleSheet("background:#27ae60;color:white;padding:5px 14px;border-radius:4px;");
+    exportBtn->setStyleSheet(buttonStyle("#27ae60", "#52be80", "#1e8449"));
     connect(exportBtn, &QPushButton::clicked, this, &HistoryWidget::onExport);
     filterLay->addWidget(exportBtn);
     filterLay->addStretch();

@@ -23,11 +23,88 @@
 #include <QStringList>
 #include <QSpinBox>
 #include <QTcpSocket>
+#include <QRandomGenerator>
 #include <QVBoxLayout>
 
 #include <algorithm>
 
 namespace {
+QStringList deviceTypeOptions() {
+    return {"灯光", "空调", "窗帘", "摄像头", "空气净化器"};
+}
+
+double randomInRange(double minValue, double maxValue) {
+    const double ratio = QRandomGenerator::global()->generateDouble();
+    return minValue + (maxValue - minValue) * ratio;
+}
+
+double randomAround(double center, double spread, double minValue, double maxValue) {
+    const double offset = randomInRange(-spread, spread);
+    return qBound(minValue, center + offset, maxValue);
+}
+
+QString formatMetric(double value) {
+    return QString::number(value, 'f', 1);
+}
+
+struct EnvSnapshot {
+    double temperature = 25.0;
+    double humidity = 55.0;
+    double airQuality = 30.0;
+};
+
+EnvSnapshot latestEnvironmentSnapshot() {
+    const auto envData = DatabaseManager::instance()->getEnvData();
+    if (envData.isEmpty()) {
+        return EnvSnapshot();
+    }
+
+    const auto& latest = envData.first();
+    EnvSnapshot snapshot;
+    snapshot.temperature = latest.value("temperature").toDouble();
+    snapshot.humidity = latest.value("humidity").toDouble();
+    snapshot.airQuality = latest.value("air_quality").toDouble();
+    return snapshot;
+}
+
+EnvSnapshot buildAirConditionerSnapshot(const QMap<QString, QString>& kv) {
+    EnvSnapshot snapshot = latestEnvironmentSnapshot();
+    const bool powerOn = (kv.value("power", "on") != "off");
+    const int targetTemp = kv.value("temp", "24").toInt();
+    const QString mode = kv.value("mode", "制冷");
+
+    if (!powerOn) {
+        snapshot.temperature = randomAround(26.2, 1.8, 22.0, 30.0);
+        snapshot.humidity = randomAround(58.0, 6.0, 42.0, 72.0);
+        snapshot.airQuality = randomAround(snapshot.airQuality, 4.0, 18.0, 65.0);
+        return snapshot;
+    }
+
+    if (mode == "制冷") {
+        snapshot.temperature = randomAround(targetTemp + 0.7, 0.8, targetTemp - 0.5, targetTemp + 2.2);
+        snapshot.humidity = randomAround(49.0, 5.0, 38.0, 62.0);
+    } else if (mode == "制热") {
+        snapshot.temperature = randomAround(targetTemp - 0.6, 0.9, targetTemp - 2.0, targetTemp + 1.5);
+        snapshot.humidity = randomAround(41.0, 4.5, 28.0, 55.0);
+    } else if (mode == "除湿") {
+        snapshot.temperature = randomAround(targetTemp + 0.3, 0.7, targetTemp - 0.8, targetTemp + 1.6);
+        snapshot.humidity = randomAround(39.0, 4.0, 30.0, 50.0);
+    } else if (mode == "送风") {
+        snapshot.temperature = randomAround(25.5, 1.5, 22.0, 29.0);
+        snapshot.humidity = randomAround(53.0, 5.0, 40.0, 66.0);
+    } else {
+        snapshot.temperature = randomAround(targetTemp, 1.0, 21.0, 29.0);
+        snapshot.humidity = randomAround(48.0, 5.0, 35.0, 62.0);
+    }
+
+    snapshot.airQuality = randomAround(snapshot.airQuality, 3.0, 15.0, 60.0);
+    return snapshot;
+}
+
+double buildPurifierAirQuality(bool powerOn) {
+    return powerOn ? randomInRange(10.0, 28.0) : randomInRange(32.0, 68.0);
+}
+
 QIcon iconForDeviceType(const QString& type, QWidget* host) {
     QStyle* s = host ? host->style() : QApplication::style();
     if (type == "空调") {
@@ -57,6 +134,9 @@ QIcon iconForDeviceType(const QString& type, QWidget* host) {
             return icon;
         }
         return s->standardIcon(QStyle::SP_ComputerIcon);
+    }
+    if (type == "空气净化器") {
+        return s->standardIcon(QStyle::SP_DriveNetIcon);
     }
     return s->standardIcon(QStyle::SP_FileIcon);
 }
@@ -101,7 +181,9 @@ void DeviceControlWidget::setupUI() {
 
     QLabel* filterLbl = new QLabel("类型过滤:", this);
     m_filterCombo = new QComboBox(this);
-    m_filterCombo->addItems({"全部", "灯光", "空调", "窗帘", "摄像头"});
+    QStringList filters = {"全部"};
+    filters.append(deviceTypeOptions());
+    m_filterCombo->addItems(filters);
     connect(m_filterCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &DeviceControlWidget::onRefresh);
 
@@ -322,6 +404,9 @@ void DeviceControlWidget::showDeviceControlDialog(const QMap<QString, QVariant>&
     QSpinBox* brightSpin = nullptr;
     QComboBox* colorCombo = nullptr;
     QSpinBox* curtainOpen = nullptr;
+    QLabel* currentTempLabel = nullptr;
+    QLabel* currentHumidityLabel = nullptr;
+    QLabel* airQualityLabel = nullptr;
 
     if (type == "空调") {
         modeCombo = new QComboBox(box);
@@ -339,17 +424,14 @@ void DeviceControlWidget::showDeviceControlDialog(const QMap<QString, QVariant>&
         fanCombo->setCurrentText(kv.value("fan", "中"));
         form->addRow("风力", fanCombo);
 
-        const auto env = DatabaseManager::instance()->getEnvData();
-        QString envText = "温度: --  湿度: --";
-        if (!env.isEmpty()) {
-            const auto latest = env.first();
-            envText = QString("温度: %1℃  湿度: %2%")
-                          .arg(QString::number(latest.value("temperature").toDouble(), 'f', 1),
-                               QString::number(latest.value("humidity").toDouble(), 'f', 1));
-        }
-        QLabel* sensor = new QLabel(envText, box);
-        sensor->setStyleSheet("color:#0f766e;font-weight:600;");
-        form->addRow("环境传感", sensor);
+        const EnvSnapshot snapshot = buildAirConditionerSnapshot(kv);
+        currentTempLabel = new QLabel(formatMetric(snapshot.temperature), box);
+        currentTempLabel->setStyleSheet("color:#0f766e;font-weight:600;");
+        form->addRow("回传温度(℃)", currentTempLabel);
+
+        currentHumidityLabel = new QLabel(formatMetric(snapshot.humidity), box);
+        currentHumidityLabel->setStyleSheet("color:#0f766e;font-weight:600;");
+        form->addRow("回传湿度(%)", currentHumidityLabel);
     } else if (type == "灯光") {
         const bool advanced = name.contains("客厅");
         if (advanced) {
@@ -368,6 +450,13 @@ void DeviceControlWidget::showDeviceControlDialog(const QMap<QString, QVariant>&
         curtainOpen->setRange(0, 100);
         curtainOpen->setValue(kv.value("open", "50").toInt());
         form->addRow("开合度(%)", curtainOpen);
+    } else if (type == "空气净化器") {
+        const double airQuality = kv.contains("air_quality")
+                                      ? kv.value("air_quality").toDouble()
+                                      : buildPurifierAirQuality(powerOn);
+        airQualityLabel = new QLabel(formatMetric(airQuality), box);
+        airQualityLabel->setStyleSheet("color:#0f766e;font-weight:600;");
+        form->addRow("空气质量", airQualityLabel);
     } else if (type == "摄像头") {
         // QLabel* readonly = new QLabel("。", box);
         // readonly->setWordWrap(true);
@@ -404,6 +493,18 @@ void DeviceControlWidget::showDeviceControlDialog(const QMap<QString, QVariant>&
     }
     if (curtainOpen) {
         kv["open"] = QString::number(curtainOpen->value());
+    }
+
+    if (type == "空调") {
+        const EnvSnapshot snapshot = buildAirConditionerSnapshot(kv);
+        kv["current_temp"] = formatMetric(snapshot.temperature);
+        kv["current_humidity"] = formatMetric(snapshot.humidity);
+        DatabaseManager::instance()->addEnvData(snapshot.temperature, snapshot.humidity, snapshot.airQuality);
+    } else if (type == "空气净化器") {
+        const double airQuality = buildPurifierAirQuality(powerBtn->isChecked());
+        const EnvSnapshot env = latestEnvironmentSnapshot();
+        kv["air_quality"] = formatMetric(airQuality);
+        DatabaseManager::instance()->addEnvData(env.temperature, env.humidity, airQuality);
     }
 
     const QString params = buildParams(kv);
@@ -597,7 +698,7 @@ void DeviceControlWidget::onAddDevice() {
 
     QLineEdit* nameEdit = new QLineEdit(&dlg);
     QComboBox* typeCombo = new QComboBox(&dlg);
-    typeCombo->addItems({"灯光", "空调", "窗帘", "摄像头"});
+    typeCombo->addItems(deviceTypeOptions());
     QComboBox* grpCombo = new QComboBox(&dlg);
     grpCombo->addItems({"客厅", "卧室", "厨房", "门口", "其他"});
     grpCombo->setEditable(true);
@@ -653,7 +754,7 @@ void DeviceControlWidget::onEditDevice() {
 
     QLineEdit* nameEdit = new QLineEdit(dev.value("name").toString(), &dlg);
     QComboBox* typeCombo = new QComboBox(&dlg);
-    typeCombo->addItems({"灯光", "空调", "窗帘", "摄像头"});
+    typeCombo->addItems(deviceTypeOptions());
     typeCombo->setCurrentText(dev.value("type").toString());
     QComboBox* grpCombo = new QComboBox(&dlg);
     grpCombo->addItems({"客厅", "卧室", "厨房", "门口", "其他"});

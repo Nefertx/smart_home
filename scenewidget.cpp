@@ -53,6 +53,32 @@ QString mergeParams(const QString& base, const QString& updates) {
     return buildParams(kv);
 }
 
+QString buttonStyle(const QString& color,
+                    const QString& hoverColor,
+                    const QString& pressedColor,
+                    const QString& padding = "5px 12px",
+                    int radius = 4,
+                    const QString& extra = QString()) {
+    return QString("QPushButton{background:%1;color:white;padding:%2;border-radius:%3px;%4}"
+                   "QPushButton:hover{background:%5;}"
+                   "QPushButton:pressed{background:%6;}"
+                   "QPushButton:disabled{background:#cbd5e1;color:#f8fafc;}")
+        .arg(color, padding, QString::number(radius), extra, hoverColor, pressedColor);
+}
+
+void styleDialogButtons(QDialogButtonBox* buttonBox) {
+    if (!buttonBox) {
+        return;
+    }
+
+    if (QPushButton* okBtn = buttonBox->button(QDialogButtonBox::Ok)) {
+        okBtn->setStyleSheet(buttonStyle("#3498db", "#5dade2", "#1f6a9a"));
+    }
+    if (QPushButton* cancelBtn = buttonBox->button(QDialogButtonBox::Cancel)) {
+        cancelBtn->setStyleSheet(buttonStyle("#7f8c8d", "#95a5a6", "#5d6d6f"));
+    }
+}
+
 QList<ActionOption> actionOptionsForDevice(const QString& type, const QString& name) {
     QList<ActionOption> options;
     if (type == "空调") {
@@ -75,6 +101,9 @@ QList<ActionOption> actionOptionsForDevice(const QString& type, const QString& n
     } else if (type == "摄像头") {
         options << ActionOption("开启监控", "power=on")
                 << ActionOption("关闭监控", "power=off");
+    } else if (type == "空气净化器") {
+        options << ActionOption("开启净化", "power=on")
+                << ActionOption("关闭净化", "power=off");
     } else {
         options << ActionOption("开机", "power=on")
                 << ActionOption("关机", "power=off");
@@ -115,9 +144,19 @@ void SceneWidget::setupUI() {
     QHBoxLayout* btnRow = new QHBoxLayout();
     auto makeBtn = [&](const QString& text, const char* slot, const QString& color) {
         QPushButton* btn = new QPushButton(text, left);
-        btn->setStyleSheet(QString("QPushButton{background:%1;color:white;border-radius:4px;padding:5px;}"
-                                   "QPushButton:hover{opacity:0.85;}")
-                               .arg(color));
+        QString hoverColor = color;
+        QString pressedColor = color;
+        if (color == "#27ae60") {
+            hoverColor = "#52be80";
+            pressedColor = "#1e8449";
+        } else if (color == "#e67e22") {
+            hoverColor = "#eb984e";
+            pressedColor = "#af601a";
+        } else if (color == "#e74c3c") {
+            hoverColor = "#ec7063";
+            pressedColor = "#b03a2e";
+        }
+        btn->setStyleSheet(buttonStyle(color, hoverColor, pressedColor, "5px 12px", 4));
         connect(btn, SIGNAL(clicked()), this, slot);
         btnRow->addWidget(btn);
     };
@@ -147,8 +186,7 @@ void SceneWidget::setupUI() {
     m_activateBtn = new QPushButton("▶ 激活此场景", right);
     m_activateBtn->setFixedHeight(44);
     m_activateBtn->setEnabled(false);
-    m_activateBtn->setStyleSheet("QPushButton{background:#2c3e50;color:white;border-radius:6px;font-size:14px;}"
-                                 "QPushButton:hover{background:#34495e;}");
+    m_activateBtn->setStyleSheet(buttonStyle("#2c3e50", "#34495e", "#1f2d3a", "8px 16px", 6, "font-size:14px;"));
     connect(m_activateBtn, &QPushButton::clicked, this, &SceneWidget::onActivateScene);
     rightVl->addWidget(m_activateBtn);
     rightVl->addStretch();
@@ -243,6 +281,7 @@ void SceneWidget::onAddScene() {
     vl->addWidget(devBox);
 
     QDialogButtonBox* bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    styleDialogButtons(bb);
     vl->addWidget(bb);
     connect(bb, &QDialogButtonBox::accepted, &dlg, [&] {
         if (nameEdit->text().trimmed().isEmpty()) {
@@ -365,6 +404,7 @@ void SceneWidget::onEditScene() {
     mainLayout->addWidget(devBox);
 
     QDialogButtonBox* bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    styleDialogButtons(bb);
     mainLayout->addWidget(bb);
 
     connect(bb, &QDialogButtonBox::accepted, &dlg, [&] {
