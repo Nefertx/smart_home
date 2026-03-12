@@ -363,6 +363,25 @@ bool DeviceControlWidget::tryPairDevice(int deviceId, const QMap<QString, QVaria
     return true;
 }
 
+bool DeviceControlWidget::forceUpdateDeviceStatus(int deviceId,
+                                                  const QMap<QString, QVariant>& device,
+                                                  const QString& status,
+                                                  const QString& actionLabel,
+                                                  const QString& successMessage) {
+    const QString params = device.value("params").toString();
+    const QString name = device.value("name").toString();
+    if (!DatabaseManager::instance()->updateDeviceStatus(deviceId, status, params)) {
+        QMessageBox::warning(this, "操作失败", QString("设备 \"%1\" 状态更新失败。").arg(name));
+        return false;
+    }
+
+    DatabaseManager::instance()->addOperationLog(m_username, name, actionLabel, "success");
+    QMessageBox::information(this, "操作成功", successMessage);
+    emit deviceChanged();
+    loadDevices();
+    return true;
+}
+
 void DeviceControlWidget::showDeviceControlDialog(const QMap<QString, QVariant>& device) {
     const int id = device.value("id").toInt();
     const QString name = device.value("name").toString();
@@ -565,11 +584,34 @@ void DeviceControlWidget::onCardContextMenu(const QPoint& pos) {
     QMenu menu(this);
     QAction* editAct = menu.addAction("编辑设备");
     QAction* delAct = menu.addAction("删除设备");
+    menu.addSeparator();
+    QAction* disconnectAct = menu.addAction("断线");
+    QAction* forceConnectAct = menu.addAction("开发者：强制连接");
     QAction* picked = menu.exec(m_cardList->viewport()->mapToGlobal(pos));
     if (picked == editAct) {
         onEditDevice();
     } else if (picked == delAct) {
         onDeleteDevice();
+    } else if (picked == disconnectAct) {
+        const auto device = DatabaseManager::instance()->getDeviceById(deviceId);
+        if (device.isEmpty()) {
+            return;
+        }
+        forceUpdateDeviceStatus(deviceId,
+                                device,
+                                "offline",
+                                "右键断线",
+                                QString("设备 \"%1\" 已设为离线。").arg(device.value("name").toString()));
+    } else if (picked == forceConnectAct) {
+        const auto device = DatabaseManager::instance()->getDeviceById(deviceId);
+        if (device.isEmpty()) {
+            return;
+        }
+        forceUpdateDeviceStatus(deviceId,
+                                device,
+                                "online",
+                                "开发者强制连接",
+                                QString("设备 \"%1\" 已强制设为在线。").arg(device.value("name").toString()));
     }
 }
 

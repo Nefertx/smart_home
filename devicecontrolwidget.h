@@ -36,6 +36,11 @@ private:
     void onCardClicked(int deviceId);
     void showDeviceControlDialog(const QMap<QString, QVariant>& device);
     bool tryPairDevice(int deviceId, const QMap<QString, QVariant>& device);
+    bool forceUpdateDeviceStatus(int deviceId,
+                                 const QMap<QString, QVariant>& device,
+                                 const QString& status,
+                                 const QString& actionLabel,
+                                 const QString& successMessage);
     void restoreDeviceOrderFromSetting();
     void persistDeviceOrderToSetting();
     int orderRank(int deviceId) const;
