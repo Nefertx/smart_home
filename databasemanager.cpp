@@ -223,7 +223,7 @@ bool DatabaseManager::resetPassword(const QString& username, const QString& newP
 bool DatabaseManager::addDevice(const QString& name, const QString& type,
                                 const QString& group, const QString& ip, int port) {
     QSqlQuery q(m_db);
-    q.prepare("INSERT INTO devices(name,type,grp,ip,port) VALUES(?,?,?,?,?)");
+    q.prepare("INSERT INTO devices(name,type,grp,ip,port,status,params) VALUES(?,?,?,?,?,'offline','')");
     q.addBindValue(name); q.addBindValue(type); q.addBindValue(group);
     q.addBindValue(ip); q.addBindValue(port);
     return q.exec();
